@@ -1,100 +1,68 @@
 import streamlit as st
-import streamlit as st
-import json
-import os
+from streamlit_gsheets import GSheetsConnection
+import pandas as pd
 
-# 1. Configuration
-st.set_page_config(page_title="Events by N - Sauvegarde Auto", layout="wide")
+# 1. Configuration de la page
+st.set_page_config(page_title="Events by N", layout="wide")
 
-# --- SYSTÈME DE SAUVEGARDE SUR DISQUE ---
-FICHIER_DATA = "base_donnees_events.json"
+# 2. Connexion à Google Sheets (utilise les Secrets que tu as configurés)
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-def charger_donnees():
-    if os.path.exists(FICHIER_DATA):
-        with open(FICHIER_DATA, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-def sauvegarder_donnees(liste_clients):
-    with open(FICHIER_DATA, "w", encoding="utf-8") as f:
-        json.dump(liste_clients, f, indent=4, ensure_ascii=False)
-
-# Initialisation
-if 'clients' not in st.session_state:
-    st.session_state.clients = charger_donnees()
-if 'client_idx' not in st.session_state:
-    st.session_state.client_idx = None
-
-# --- DESIGN LUXE DARK ---
+# 3. Design Luxe Noir et Or
 st.markdown("""
     <style>
     .stApp { background-color: #121212; color: #FFFFFF; }
     [data-testid="stSidebar"] { background-color: #000000 !important; border-right: 2px solid #D4AF37; }
-    .metric-card {
-        background-color: #1E1E1E; padding: 20px; border-radius: 15px;
-        border: 1px solid #D4AF37; text-align: center;
-    }
-    .stButton>button { background-color: #D4AF37 !important; color: #000 !important; font-weight: bold !important; border-radius: 10px !important; }
-    input, textarea, select { background-color: #2D2D2D !important; color: white !important; }
-    label { color: #D4AF37 !important; }
+    .stButton>button { background-color: #D4AF37 !important; color: #000 !important; font-weight: bold !important; width: 100%; border-radius: 10px; }
+    h1, h2, h3 { color: #D4AF37 !important; }
+    .stDataFrame { background-color: #1E1E1E; border-radius: 10px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- BARRE LATÉRALE ---
+# 4. Chargement des données (avec sécurité)
+try:
+    df = conn.read(ttl=0).astype(str)
+except:
+    df = pd.DataFrame(columns=["nom", "num", "adresse", "lieu", "date", "debut", "fin", "budget"])
+
+# 5. Menu Latéral
 with st.sidebar:
-    st.markdown("<h1 style='color: #D4AF37; text-align: center;'>Events by N</h1>", unsafe_allow_html=True)
-    st.write("---")
-    menu = st.radio("MENU", ["📊 TABLEAU DE BORD", "➕ NOUVEAU CLIENT"])
-    st.write("---")
-    st.subheader("👥 MES DOSSIERS")
-    
-    # Affichage des clients sauvegardés
-    for i, c in enumerate(st.session_state.clients):
-        if st.button(f"👤 {c['nom']}", key=f"user_{i}"):
-            st.session_state.client_idx = i
+    st.markdown("<h1 style='text-align: center;'>Events by N</h1>", unsafe_allow_html=True)
+    st.markdown("---")
+    menu = st.sidebar.radio("NAVIGATION", ["📊 TABLEAU DE BORD", "➕ NOUVEAU CLIENT"])
 
-# --- PAGES ---
-
+# 6. Page : Nouveau Client
 if menu == "➕ NOUVEAU CLIENT":
-    st.title("➕ Créer une fiche")
-    with st.form("form_permanent"):
-        c1, c2 = st.columns(2)
-        with c1:
-            nom = st.text_input("Nom & Prénom")
-            num = st.text_input("Téléphone")
-            adresse = st.text_area("Adresse")
-        with c2:
-            lieu = st.text_input("Lieu")
-            date = st.date_input("Date")
-            h_debut = st.time_input("Début")
-            h_fin = st.time_input("Fin")
-            budget = st.number_input("Budget (DZD)", min_value=0)
+    st.title("➕ Enregistrer un nouveau dossier")
+    with st.form("form_client", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            nom = st.text_input("Nom du Client")
+            num = st.text_input("N° de Téléphone")
+            adresse = st.text_area("Adresse du client")
+        with col2:
+            lieu = st.text_input("Lieu de l'événement")
+            date_ev = st.date_input("Date de l'événement")
+            budget = st.number_input("Budget Total (DZD)", min_value=0)
         
-        if st.form_submit_button("SAUVEGARDER DÉFINITIVEMENT"):
+        if st.form_submit_button("SAUVEGARDER DANS LE CLOUD"):
             if nom:
-                nouvelle_fiche = {
+                # Création de la nouvelle ligne
+                nouveau_client = pd.DataFrame([{
                     "nom": nom, "num": num, "adresse": adresse,
-                    "lieu": lieu, "date": str(date), "debut": str(h_debut), "fin": str(h_fin),
-                    "budget": budget
-                }
-                # Ajouter à la liste ET sauvegarder dans le fichier
-                st.session_state.clients.append(nouvelle_fiche)
-                sauvegarder_donnees(st.session_state.clients)
-                st.success(f"Dossier de {nom} enregistré sur le disque !")
-                st.rerun()
+                    "lieu": lieu, "date": str(date_ev), "budget": str(budget)
+                }])
+                # Mise à jour du Google Sheets
+                updated_df = pd.concat([df, nouveau_client], ignore_index=True)
+                conn.update(data=updated_df)
+                st.success(f"✅ Le dossier de {nom} a été sauvegardé sur ton Google Sheets !")
+            else:
+                st.error("⚠️ Merci d'entrer au moins le nom du client.")
 
-elif menu == "📊 TABLEAU DE BORD":
-    if st.session_state.client_idx is not None:
-        c = st.session_state.clients[st.session_state.client_idx]
-        st.markdown(f"<h1 style='color: #D4AF37;'>Dossier : {c['nom']}</h1>", unsafe_allow_html=True)
-        
-        col_a, col_b = st.columns(2)
-        col_a.info(f"📍 Lieu : {c['lieu']} | 📅 Date : {c['date']}")
-        col_b.info(f"⏰ Horaires : {c['debut']} - {c['fin']}")
-        
-        st.write("##")
-        m1, m2 = st.columns(2)
-        m1.markdown(f"<div class='metric-card'><h3>BUDGET ALLOUÉ</h3><h2>{c['budget']:,} DZD</h2></div>", unsafe_allow_html=True)
-        m2.markdown(f"<div class='metric-card'><h3>CONTACT</h3><h2>{c['num']}</h2></div>", unsafe_allow_html=True)
+# 7. Page : Tableau de Bord
+else:
+    st.title("📊 Liste de tes événements")
+    if not df.empty:
+        st.dataframe(df, use_container_width=True)
     else:
-        st.info("Sélectionnez un client à gauche pour voir ses informations.")
+        st.info("Aucun client enregistré pour le moment.")
