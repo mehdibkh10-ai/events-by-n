@@ -5,7 +5,9 @@ import pandas as pd
 # 1. Configuration de la page
 st.set_page_config(page_title="Events by N", layout="wide")
 
-# 2. Connexion à Google Sheets (utilise les Secrets que tu as configurés)
+# 2. Connexion à Google Sheets
+# On récupère l'URL directement depuis les secrets pour éviter les erreurs
+sheet_url = st.secrets["connections"]["gsheets"]["spreadsheet"]
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # 3. Design Luxe Noir et Or
@@ -19,11 +21,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 4. Chargement des données (avec sécurité)
+# 4. Chargement des données
 try:
-    df = conn.read(ttl=0).astype(str)
-except:
-    df = pd.DataFrame(columns=["nom", "num", "adresse", "lieu", "date", "debut", "fin", "budget"])
+    # On lit le tableau actuel
+    df = conn.read(spreadsheet=sheet_url, ttl=0).astype(str)
+except Exception as e:
+    # Si le tableau est vide, on crée les colonnes par défaut
+    df = pd.DataFrame(columns=["nom", "num", "adresse", "lieu", "date", "budget"])
 
 # 5. Menu Latéral
 with st.sidebar:
@@ -45,24 +49,35 @@ if menu == "➕ NOUVEAU CLIENT":
             date_ev = st.date_input("Date de l'événement")
             budget = st.number_input("Budget Total (DZD)", min_value=0)
         
-        if st.form_submit_button("SAUVEGARDER DANS LE CLOUD"):
+        submit = st.form_submit_button("SAUVEGARDER DANS LE CLOUD")
+        
+        if submit:
             if nom:
-                # Création de la nouvelle ligne
+                # Préparation de la nouvelle ligne
                 nouveau_client = pd.DataFrame([{
-                    "nom": nom, "num": num, "adresse": adresse,
-                    "lieu": lieu, "date": str(date_ev), "budget": str(budget)
+                    "nom": nom, 
+                    "num": str(num), 
+                    "adresse": adresse,
+                    "lieu": lieu, 
+                    "date": str(date_ev), 
+                    "budget": str(budget)
                 }])
-                # Mise à jour du Google Sheets
+                
+                # Fusion avec les anciens clients
                 updated_df = pd.concat([df, nouveau_client], ignore_index=True)
-                conn.update(data=updated_df)
-                st.success(f"✅ Le dossier de {nom} a été sauvegardé sur ton Google Sheets !")
+                
+                # SAUVEGARDE CRITIQUE
+                try:
+                    conn.update(spreadsheet=sheet_url, data=updated_df)
+                    st.success(f"✅ Dossier de {nom} enregistré avec succès !")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Erreur de connexion : Vérifie que ton Google Sheet est bien en mode 'Éditeur' pour tout le monde.")
             else:
-                st.error("⚠️ Merci d'entrer au moins le nom du client.")
+                st.error("⚠️ Le nom du client est obligatoire.")
 
 # 7. Page : Tableau de Bord
 else:
     st.title("📊 Liste de tes événements")
-    if not df.empty:
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.info("Aucun client enregistré pour le moment.")
+    # On ré-affiche le tableau mis à jour
+    st.dataframe(df, use_container_width=True)
