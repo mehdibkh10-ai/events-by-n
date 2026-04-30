@@ -1,55 +1,44 @@
 import streamlit as st
 import pandas as pd
+import uuid
+from datetime import date
 
 # =========================
 # CONFIG
 # =========================
 st.set_page_config(page_title="EVENT SaaS PRO", layout="wide")
 
-# =========================
-# STYLE PRO
-# =========================
 st.markdown("""
 <style>
-.stApp {
-    background-color: #F3F4F6;
-    color: #111;
-}
+.stApp { background:#F3F4F6; color:#111; }
 
-/* Sidebar */
 [data-testid="stSidebar"] {
-    background-color: #111827;
+    background:#111827;
 }
-
 [data-testid="stSidebar"] * {
-    color: white !important;
+    color:white !important;
 }
 
-/* Titles */
-h1,h2,h3,h4,p,label {
-    color: #111 !important;
-}
+h1,h2,h3 { color:#111 !important; }
 
-/* Buttons */
 .stButton>button {
-    background-color: #2563EB !important;
-    color: white !important;
-    border-radius: 10px;
+    background:#2563EB !important;
+    color:white !important;
+    border-radius:10px;
 }
 
-/* Cards */
 .card {
-    background: white;
-    padding: 15px;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    margin-bottom: 10px;
+    background:white;
+    padding:15px;
+    border-radius:12px;
+    margin-bottom:10px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.06);
 }
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# SESSION DB (LOCAL SAFE)
+# DB LOCAL
 # =========================
 if "inv" not in st.session_state:
     st.session_state.inv = pd.DataFrame(columns=[
@@ -58,17 +47,21 @@ if "inv" not in st.session_state:
 
 if "events" not in st.session_state:
     st.session_state.events = pd.DataFrame(columns=[
-        "Nom", "Type", "Client", "Article", "Quantite", "Prix_Total"
-    ])
-
-if "clients" not in st.session_state:
-    st.session_state.clients = pd.DataFrame(columns=[
-        "Nom", "Telephone", "Email", "Type", "Evenement"
+        "Event_ID",
+        "Client",
+        "Type",
+        "Date_Debut",
+        "Date_Fin",
+        "Article",
+        "Quantite",
+        "Budget_Client",
+        "Budget_Personnel",
+        "Total",
+        "Observation"
     ])
 
 inv = st.session_state.inv
 events = st.session_state.events
-clients = st.session_state.clients
 
 # =========================
 # MENU
@@ -79,8 +72,7 @@ with st.sidebar:
     page = st.radio("Navigation", [
         "📊 Dashboard",
         "📦 Inventaire",
-        "📅 Événements",
-        "👥 Clients"
+        "📅 Événements"
     ])
 
 # =========================================================
@@ -88,75 +80,45 @@ with st.sidebar:
 # =========================================================
 if page == "📊 Dashboard":
 
-    st.title("📊 Dashboard SaaS")
+    st.title("📊 Dashboard")
 
-    stock_value = (inv["Stock"] * inv["Prix_Achat"]).sum() if not inv.empty else 0
-    revenue = events["Prix_Total"].sum() if not events.empty else 0
+    total_client = events["Budget_Client"].sum() if not events.empty else 0
+    total_cost = events["Budget_Personnel"].sum() if not events.empty else 0
 
     col1, col2, col3 = st.columns(3)
 
-    col1.metric("💰 Valeur stock", f"{stock_value:.0f} DA")
-    col2.metric("📈 CA total", f"{revenue:.0f} DA")
-    col3.metric("👥 Clients", len(clients))
+    col1.metric("💰 CA Client", f"{total_client:.0f} DA")
+    col2.metric("💸 Coût total", f"{total_cost:.0f} DA")
+    col3.metric("📅 Events", len(events))
 
     st.divider()
 
-    st.subheader("📅 Derniers événements")
-    st.dataframe(events.tail(10) if not events.empty else events)
+    st.dataframe(events)
 
 # =========================================================
-# 📦 INVENTAIRE (VERSION PRO AMÉLIORÉE)
+# 📦 INVENTAIRE
 # =========================================================
 elif page == "📦 Inventaire":
 
-    st.title("📦 Gestion Inventaire PRO")
+    st.title("📦 Stock")
 
-    if inv.empty:
-        st.info("Aucun article dans le stock")
-    else:
+    for _, r in inv.iterrows():
 
-        # =========================
-        # TABLEAU PRO
-        # =========================
-        st.subheader("📊 Vue globale")
+        achat = float(r["Prix_Achat"])
+        loc = achat / 4
 
-        display = inv.copy()
-        display["Prix_Location"] = display["Prix_Achat"] / 4
-        display["Valeur_Stock"] = display["Stock"] * display["Prix_Achat"]
-
-        st.dataframe(display, use_container_width=True)
-
-        st.divider()
-
-        # =========================
-        # CARDS MODERNES
-        # =========================
-        st.subheader("📦 Détails articles")
-
-        for _, r in inv.iterrows():
-
-            achat = float(r["Prix_Achat"])
-            loc = achat / 4
-            valeur = float(r["Stock"]) * achat
-
-            st.markdown(f"""
-            <div class="card">
-                <h4>🔹 {r['Article']}</h4>
-                <p>
-                📂 Catégorie: <b>{r['Categorie']}</b><br>
-                📦 Stock: <b>{r['Stock']}</b><br>
-                💰 Achat: <b>{achat:.0f} DA</b><br>
-                📤 Location: <b>{loc:.0f} DA</b><br>
-                📊 Valeur stock: <b>{valeur:.0f} DA</b>
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="card">
+            <b>{r['Article']}</b><br>
+            Catégorie: {r['Categorie']}<br>
+            Stock: {r['Stock']}<br>
+            Achat: {achat:.0f} DA<br>
+            Location: {loc:.0f} DA
+        </div>
+        """, unsafe_allow_html=True)
 
     st.divider()
 
-    # =========================
-    # AJOUT ARTICLE
-    # =========================
     st.subheader("➕ Ajouter article")
 
     c1, c2 = st.columns(2)
@@ -166,7 +128,7 @@ elif page == "📦 Inventaire":
     stock = c1.number_input("Stock", min_value=1)
     prix = c2.number_input("Prix achat", min_value=0)
 
-    if st.button("Ajouter article"):
+    if st.button("Ajouter"):
 
         new = pd.DataFrame([{
             "Categorie": cat,
@@ -176,98 +138,85 @@ elif page == "📦 Inventaire":
         }])
 
         st.session_state.inv = pd.concat([inv, new], ignore_index=True)
-
-        st.success("✅ Article ajouté")
+        st.success("Ajouté")
 
 # =========================================================
-# 📅 ÉVÉNEMENTS (AVEC CLIENTS)
+# 📅 ÉVÉNEMENTS (VERSION PRO COMPLETE)
 # =========================================================
 elif page == "📅 Événements":
 
-    st.title("📅 Gestion Événements")
+    st.title("📅 Création événement PRO")
 
     type_ev = st.selectbox("Type événement", [
         "Mariage", "Anniversaire", "Entreprise"
     ])
 
+    # CLIENT
     st.subheader("👤 Client")
 
     c1, c2 = st.columns(2)
 
-    nom_client = c1.text_input("Nom client")
+    client = c1.text_input("Nom client")
     tel = c1.text_input("Téléphone")
     email = c2.text_input("Email")
 
     st.divider()
 
+    # EVENT
+    st.subheader("📅 Informations événement")
+
     nom_event = st.text_input("Nom événement")
+
+    col1, col2 = st.columns(2)
+
+    date_debut = col1.date_input("Date début", value=date.today())
+    date_fin = col2.date_input("Date fin", value=date.today())
+
     article = st.text_input("Article")
     qty = st.number_input("Quantité", min_value=1)
+
+    observation = st.text_area("Observation (notes client)")
+
+    budget_client = st.number_input("💰 Budget client (DA)", min_value=0)
+
+    budget_personnel = st.number_input("💸 Budget personnel (coût estimé)", min_value=0)
 
     if st.button("Créer événement"):
 
         if not inv.empty and article in inv["Article"].values:
 
+            event_id = str(uuid.uuid4())[:8]
+
             price = float(inv[inv["Article"] == article]["Prix_Achat"].values[0])
             loc = price / 4
             total = loc * qty
 
-            # EVENT
             new_event = pd.DataFrame([{
-                "Nom": nom_event,
+                "Event_ID": event_id,
+                "Client": client,
                 "Type": type_ev,
-                "Client": nom_client,
+                "Date_Debut": date_debut,
+                "Date_Fin": date_fin,
                 "Article": article,
                 "Quantite": qty,
-                "Prix_Total": total
+                "Budget_Client": budget_client,
+                "Budget_Personnel": budget_personnel,
+                "Total": total,
+                "Observation": observation
             }])
 
             st.session_state.events = pd.concat([events, new_event], ignore_index=True)
 
-            # CLIENT
-            new_client = pd.DataFrame([{
-                "Nom": nom_client,
-                "Telephone": tel,
-                "Email": email,
-                "Type": type_ev,
-                "Evenement": nom_event
-            }])
-
-            st.session_state.clients = pd.concat([
-                clients,
-                new_client
-            ], ignore_index=True)
-
-            # STOCK UPDATE
+            # stock update sécurisé
             inv.loc[inv["Article"] == article, "Stock"] -= qty
             st.session_state.inv = inv
 
-            st.success(f"✅ Événement créé | Total: {total:.0f} DA")
+            st.success(f"""
+            ✅ EVENT CRÉÉ
+            🆔 ID: {event_id}
+            💰 Total: {total:.0f} DA
+            📅 {date_debut} → {date_fin}
+            """)
 
         else:
             st.error("Article introuvable")
-
-    st.divider()
-
-    st.subheader("📋 Liste événements")
-    st.dataframe(events)
-
-# =========================================================
-# 👥 CLIENTS
-# =========================================================
-else:
-
-    st.title("👥 Base Clients")
-
-    if not clients.empty:
-        st.dataframe(clients)
-
-        st.subheader("🔍 Recherche client")
-        search = st.text_input("Nom client")
-
-        if search:
-            st.dataframe(
-                clients[clients["Nom"].str.contains(search, case=False)]
-            )
-    else:
-        st.info("Aucun client enregistré")
