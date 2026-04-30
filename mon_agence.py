@@ -1,62 +1,39 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
+import hashlib
 
 # =========================
-# CONFIG UI MODERNE
+# CONFIG
 # =========================
-st.set_page_config(page_title="EVENT PRO SYSTEM", layout="wide")
+st.set_page_config(page_title="EVENT SaaS PRO", layout="wide")
 
 st.markdown("""
 <style>
+.stApp { background:#F5F7FB; color:#000; }
 
-/* Fond général */
-.stApp {
-    background-color: #F4F6F9;
-    color: #000000;
-}
-
-/* Sidebar */
 [data-testid="stSidebar"] {
-    background-color: #1F2937;
-    color: white;
+    background:#111827;
 }
 
-/* Texte sidebar */
 [data-testid="stSidebar"] * {
-    color: white !important;
+    color:white !important;
 }
 
-/* Titres */
-h1, h2, h3 {
-    color: #111827 !important;
-    font-family: Arial;
+h1,h2,h3 {
+    color:#111827;
 }
 
-/* Boutons */
 .stButton>button {
-    background-color: #2563EB !important;
-    color: white !important;
-    border-radius: 8px;
-    border: none;
-    padding: 8px 15px;
+    background:#2563EB !important;
+    color:white !important;
+    border-radius:10px;
 }
-
-/* Cards style */
-.block-container {
-    padding: 2rem;
-}
-
-/* Inputs */
-input, selectbox, textarea {
-    border-radius: 8px !important;
-}
-
 </style>
 """, unsafe_allow_html=True)
 
 # =========================
-# DB
+# DB CONNECTION
 # =========================
 conn = st.connection("gsheets", type=GSheetsConnection)
 
@@ -70,10 +47,40 @@ def save(name, df):
     conn.write(worksheet=name, data=df)
 
 # =========================
+# AUTH SYSTEM (SIMPLE SAAS LOGIN)
+# =========================
+ADMIN_USER = "admin"
+ADMIN_PASS = "1234"
+
+def hash_pass(p):
+    return hashlib.sha256(p.encode()).hexdigest()
+
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+
+if not st.session_state.auth:
+
+    st.title("🔐 EVENT SaaS LOGIN")
+
+    user = st.text_input("Username")
+    pwd = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+
+        if user == ADMIN_USER and pwd == ADMIN_PASS:
+            st.session_state.auth = True
+            st.rerun()
+        else:
+            st.error("❌ Identifiants incorrects")
+
+    st.stop()
+
+# =========================
 # SIDEBAR
 # =========================
 with st.sidebar:
-    st.title("⚜ EVENT PRO")
+    st.title("⚜ EVENT SaaS PRO")
+
     page = st.radio("Navigation", [
         "📊 Dashboard",
         "📦 Inventaire",
@@ -81,47 +88,56 @@ with st.sidebar:
         "👥 Clients"
     ])
 
+# =========================
+# LOAD DATA
+# =========================
+inv = load("Inventaire")
+ev = load("Evenements")
+
 # =========================================================
 # 📊 DASHBOARD
 # =========================================================
 if page == "📊 Dashboard":
 
-    st.title("📊 Tableau de bord")
-
-    inv = load("Inventaire")
-    ev = load("Evenements")
+    st.title("📊 Dashboard SaaS")
 
     col1, col2, col3 = st.columns(3)
 
-    stock_val = 0
+    stock_value = 0
     if not inv.empty:
-        stock_val = (inv["Stock"] * inv["Prix_Achat"]).sum()
+        stock_value = (inv["Stock"] * inv["Prix_Achat"]).sum()
 
     revenue = 0
     if not ev.empty:
         revenue = ev["Prix_Total"].sum()
 
-    col1.metric("💰 Valeur stock", f"{stock_val:.0f} DA")
-    col2.metric("📈 CA total", f"{revenue:.0f} DA")
-    col3.metric("📦 Articles", len(inv) if not inv.empty else 0)
+    col1.metric("💰 Valeur stock", f"{stock_value:.0f} DA")
+    col2.metric("📈 Chiffre d'affaires", f"{revenue:.0f} DA")
+    col3.metric("📅 Événements", len(ev) if not ev.empty else 0)
+
+    st.divider()
+
+    if not ev.empty:
+        st.subheader("📅 Derniers événements")
+        st.dataframe(ev.tail(10))
 
 # =========================================================
 # 📦 INVENTAIRE
 # =========================================================
 elif page == "📦 Inventaire":
 
-    st.title("📦 Gestion Inventaire")
-
-    inv = load("Inventaire")
+    st.title("📦 Gestion Stock")
 
     categories = ["Mobilier", "Textile", "Vaisselle", "Décoration", "Lumière", "Technique"]
 
     if not inv.empty:
+
         for cat in categories:
 
             dfc = inv[inv["Categorie"] == cat]
 
             if not dfc.empty:
+
                 st.subheader(f"📂 {cat}")
 
                 for _, r in dfc.iterrows():
@@ -135,8 +151,7 @@ elif page == "📦 Inventaire":
                         padding:15px;
                         border-radius:12px;
                         margin-bottom:10px;
-                        box-shadow:0px 2px 8px rgba(0,0,0,0.05);
-                        color:black;
+                        box-shadow:0 2px 10px rgba(0,0,0,0.05);
                     ">
                         <b>🔹 {r['Article']}</b><br>
                         Stock: {r['Stock']}<br>
@@ -145,7 +160,7 @@ elif page == "📦 Inventaire":
                     </div>
                     """, unsafe_allow_html=True)
 
-    # ADD
+    # ADD ITEM
     with st.expander("➕ Ajouter article"):
         with st.form("add"):
 
@@ -177,10 +192,7 @@ elif page == "📅 Événements":
 
     st.title("📅 Gestion Événements")
 
-    inv = load("Inventaire")
-    ev = load("Evenements")
-
-    type_ev = st.selectbox("Type événement", ["Mariage", "Anniversaire", "Dîner", "Entreprise"])
+    type_ev = st.selectbox("Type", ["Mariage", "Anniversaire", "Dîner", "Entreprise"])
 
     with st.form("event"):
 
@@ -191,15 +203,15 @@ elif page == "📅 Événements":
         article = st.selectbox("Article", inv["Article"].tolist() if not inv.empty else [])
         qty = st.number_input("Quantité", min_value=1)
 
-        if st.form_submit_button("Créer"):
+        if st.form_submit_button("Créer événement"):
 
             row = inv[inv["Article"] == article]
 
             if not row.empty:
 
-                prix_achat = float(row["Prix_Achat"].values[0])
-                prix_loc = prix_achat / 4
-                total = prix_loc * qty
+                prix = float(row["Prix_Achat"].values[0])
+                loc = prix / 4
+                total = loc * qty
 
                 new_ev = pd.DataFrame([{
                     "Nom": nom,
@@ -217,18 +229,16 @@ elif page == "📅 Événements":
                 inv.loc[inv["Article"] == article, "Stock"] -= qty
                 save("Inventaire", inv)
 
-                st.success("✅ Événement créé")
+                st.success("✅ Événement créé avec succès")
 
 # =========================================================
 # 👥 CLIENTS
 # =========================================================
 else:
 
-    st.title("👥 Clients")
-
-    ev = load("Evenements")
+    st.title("👥 Base Clients")
 
     if not ev.empty:
         st.dataframe(ev)
     else:
-        st.info("Aucun client")
+        st.info("Aucun client enregistré")
