@@ -2,42 +2,56 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# --- CONFIGURATION STYLE (NOIR & BLANC) ---
-st.set_page_config(page_title="Events by N - Gestion Stock", layout="wide")
+# --- STYLE ---
+st.set_page_config(page_title="Events by N - Gestion Pro", layout="wide")
 
 st.markdown("""
-    <style>
-    .stApp { background-color: #FFFFFF; color: #000000; }
-    [data-testid="stSidebar"] { background-color: #F8F9FA !important; border-right: 1px solid #DDDDDD; }
-    h1, h2, h3, p, label { color: #000000 !important; font-family: 'Arial', sans-serif; }
-    .stButton>button { background-color: #000000 !important; color: #FFFFFF !important; border-radius: 4px; border: none; }
-    .stExpander { border: 1px solid #EEEEEE !important; box-shadow: none !important; margin-bottom: 10px; }
-    hr { border: 0.5px solid #EEEEEE; }
-    </style>
-    """, unsafe_allow_html=True)
+<style>
+.stApp { background-color: #FFFFFF; color: #000000; }
+[data-testid="stSidebar"] { background-color: #F8F9FA !important; border-right: 1px solid #DDDDDD; }
+h1, h2, h3, p, label { color: #000000 !important; font-family: Arial; }
+.stButton>button { background-color: #000000 !important; color: #FFFFFF !important; }
+</style>
+""", unsafe_allow_html=True)
 
-# --- CONNEXION ---
+# --- CONNEXION GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# --- LOAD INVENTAIRE ---
 def load_inv():
     try:
         df = conn.read(worksheet="Inventaire", ttl=0)
-        df["Prix_Achat"] = pd.to_numeric(df["Prix_Achat"], errors='coerce').fillna(0)
+        df["Prix_Achat"] = pd.to_numeric(df["Prix_Achat"], errors="coerce").fillna(0)
         return df
     except:
         return pd.DataFrame(columns=["Categorie", "Article", "Stock", "Prix_Achat"])
 
-# --- NAVIGATION ---
+# --- LOAD EVENTS ---
+def load_events():
+    try:
+        return conn.read(worksheet="Evenements", ttl=0)
+    except:
+        return pd.DataFrame(columns=[
+            "Nom", "Type", "Date", "Lieu", "Article", "Quantite", "Prix_Total"
+        ])
+
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("⚜️ Events by N")
-    choix = st.radio("MENU", ["📦 INVENTAIRE PRO", "👥 CLIENTS & MARIAGES"])
+    choix = st.radio("MENU", [
+        "📦 INVENTAIRE PRO",
+        "👥 CLIENTS",
+        "📅 ÉVÉNEMENTS"
+    ])
 
-# --- PAGE INVENTAIRE ---
+# =========================================================
+# 📦 INVENTAIRE
+# =========================================================
 if choix == "📦 INVENTAIRE PRO":
-    st.header("📦 Gestion de l'Inventaire")
+    st.header("📦 Gestion Inventaire")
+
     df = load_inv()
 
-    # Tes 6 catégories exactes
     categories = [
         "1. Mobilier et Structures",
         "2. Textiles et Linge de Table",
@@ -48,66 +62,113 @@ if choix == "📦 INVENTAIRE PRO":
     ]
 
     for cat in categories:
-        with st.expander(f"📂 {cat.upper()}"):
+        with st.expander(f"📂 {cat}"):
             items = df[df["Categorie"] == cat]
-            
-            if items.empty:
-                st.write("*Aucun article dans ce dossier.*")
-            else:
-                # En-tête tableau
-                c_h1, c_h2, c_h3, c_h4, c_h5 = st.columns([2.5, 1, 1, 1, 1.5])
-                c_h1.write("**Article**")
-                c_h2.write("**Stock**")
-                c_h3.write("**Achat**")
-                c_h4.write("**Location**")
-                c_h5.write("**Rentabilité**")
-                st.markdown("---")
 
+            if items.empty:
+                st.write("Aucun article")
+            else:
                 for _, row in items.iterrows():
-                    p_achat = float(row['Prix_Achat'])
-                    p_loc = p_achat / 4  # Ta règle du 1/4
-                    
-                    c1, c2, c3, c4, c5 = st.columns([2.5, 1, 1, 1, 1.5])
-                    c1.write(f"🔹 {row['Article']}")
-                    c2.write(f"{row['Stock']}")
-                    c3.write(f"{p_achat:,.0f} DA")
-                    c4.write(f"**{p_loc:,.0f} DA**")
-                    c5.write("✅ Amorti en 4 loc.")
+                    achat = float(row["Prix_Achat"])
+                    loc = achat / 4
+
+                    st.write(f"""
+                    🔹 **{row['Article']}**  
+                    Stock: {row['Stock']}  
+                    Achat: {achat:.0f} DA  
+                    Location: {loc:.0f} DA
+                    """)
                     st.markdown("---")
 
-    # Ajouter du stock
-    with st.expander("➕ AJOUTER UN ARTICLE"):
-        with st.form("new_stock"):
-            c_a, c_b = st.columns(2)
-            sel_cat = c_a.selectbox("Dossier", categories)
-            sel_nom = c_b.text_input("Nom de l'article")
-            sel_qty = c_a.number_input("Quantité", min_value=1)
-            sel_prx = c_b.number_input("Prix d'achat unitaire (DA)", min_value=0)
-            
-            if st.form_submit_button("VALIDER L'AJOUT"):
-                st.success(f"Article ajouté ! Prix de location fixé à {sel_prx/4} DA")
+    # ADD STOCK
+    with st.expander("➕ Ajouter article"):
+        with st.form("add_item"):
+            col1, col2 = st.columns(2)
 
-# --- PAGE CLIENTS ---
-else:
-    st.header("👥 Fiches Clients")
-    type_ev = st.selectbox("Type", ["Mariage", "Anniversaire"])
-    
-    with st.form("client_form"):
+            cat = col1.selectbox("Catégorie", categories)
+            article = col2.text_input("Article")
+            stock = col1.number_input("Stock", min_value=1)
+            prix = col2.number_input("Prix achat", min_value=0)
+
+            if st.form_submit_button("Ajouter"):
+                st.success("Article ajouté (Google Sheets à connecter pour sauvegarde)")
+
+# =========================================================
+# 👥 CLIENTS
+# =========================================================
+elif choix == "👥 CLIENTS":
+    st.header("👥 Gestion Clients")
+
+    type_ev = st.selectbox("Type événement", ["Mariage", "Anniversaire"])
+
+    with st.form("client"):
         if type_ev == "Mariage":
-            col1, col2 = st.columns(2)
-            nom_f = col1.text_input("👰 Mariée (Nom/Prénom)")
-            tel_f = col1.text_input("📞 Tél. Mariée")
-            nom_h = col2.text_input("🤵 Marié (Nom/Prénom)")
-            tel_h = col2.text_input("📞 Tél. Marié")
+            c1, c2 = st.columns(2)
+            nom1 = c1.text_input("Mariée")
+            tel1 = c1.text_input("Téléphone Mariée")
+            nom2 = c2.text_input("Marié")
+            tel2 = c2.text_input("Téléphone Marié")
         else:
-            col1, col2 = st.columns(2)
-            nom_c = col1.text_input("👤 Nom du Client")
-            nom_p = col2.text_input("🎂 Anniversaire pour...")
-            tel_c = col1.text_input("📞 Téléphone")
+            c1, c2 = st.columns(2)
+            nom = c1.text_input("Nom client")
+            event = c2.text_input("Pour qui ?")
+            tel = c1.text_input("Téléphone")
 
-        st.divider()
-        lieu = st.text_input("📍 Lieu de l'événement")
-        date = st.date_input("📅 Date")
-        
-        if st.form_submit_button("ENREGISTRER LE DOSSIER"):
-            st.balloons()
+        lieu = st.text_input("Lieu")
+        date = st.date_input("Date")
+
+        if st.form_submit_button("Enregistrer"):
+            st.success("Client enregistré")
+
+# =========================================================
+# 📅 ÉVÉNEMENTS
+# =========================================================
+else:
+    st.header("📅 Gestion Événements")
+
+    inv = load_inv()
+    events = load_events()
+
+    with st.form("event_form"):
+        nom = st.text_input("Nom événement")
+        type_ev = st.selectbox("Type", ["Mariage", "Anniversaire", "Entreprise", "Autre"])
+        date = st.date_input("Date")
+        lieu = st.text_input("Lieu")
+
+        article = st.selectbox("Article", inv["Article"].unique() if not inv.empty else [])
+        qty = st.number_input("Quantité", min_value=1)
+
+        if st.form_submit_button("Créer événement"):
+
+            row = inv[inv["Article"] == article]
+
+            if not row.empty:
+                prix_achat = float(row["Prix_Achat"].values[0])
+                prix_loc = prix_achat / 4
+                total = prix_loc * qty
+
+                new_event = pd.DataFrame([{
+                    "Nom": nom,
+                    "Type": type_ev,
+                    "Date": date,
+                    "Lieu": lieu,
+                    "Article": article,
+                    "Quantite": qty,
+                    "Prix_Total": total
+                }])
+
+                st.success(f"""
+                ✅ Événement créé  
+                📦 Article: {article}  
+                💰 Prix location: {prix_loc:.0f} DA  
+                💵 Total: {total:.0f} DA
+                """)
+
+                st.dataframe(new_event)
+
+            else:
+                st.error("Article introuvable")
+
+    # LIST EVENTS
+    st.subheader("📋 Liste événements")
+    st.dataframe(events)
